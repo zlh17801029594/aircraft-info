@@ -2,13 +2,14 @@
 # _*_ coding:utf-8 _*_
 import requests
 import os
+import re
 from bs4 import BeautifulSoup as bs
 import pymysql
 import time, random, datetime
 db = pymysql.connect("192.168.243.121", "root", "a1d#c3c#r4o9o9t%", "aims")
 cursor = db.cursor()
 
-log_path = 'log'
+log_path = 'log1'
 err_log = 'err.txt'
 abnormal_log = 'abnormal.txt'
 info_log = 'info.txt'
@@ -16,8 +17,8 @@ sql_err_log = 'err.sql.txt'
 # dict_csv = 'dict.csv'
 
 def get_html(url):
-    random_time = random.randint(3, 5)
-    time.sleep(random_time)
+    # random_time = random.randint(3, 5)
+    # time.sleep(random_time)
     try:
         r = requests.get(url, timeout=15)
         r.encoding = r.apparent_encoding
@@ -72,7 +73,15 @@ def save_aircraft(base_url, continent_list):
             country_ch_name = country['ch_name']
             country_en_name = country['en_name']
             country_url = base_url + country['href'] if country['href'] else None
-            aircraft_list = get_aircraft_list(country['ch_name'], country_url)
+            if country_en_name == 'China':
+                country_url_list = ['http://airport.anseo.cn/c-china__page-{}'.format(str(i)) for i in range(3, 10)]
+            elif country_en_name == 'Chile':
+                country_url_list = ['http://airport.anseo.cn/c-chile__page-{}'.format(str(i)) for i in range(7, 17)]
+            elif country_en_name == 'United States':
+                country_url_list = ['http://airport.anseo.cn/c-usa__page-{}'.format(str(i)) for i in range(69, 745)]
+            else:
+                continue
+            aircraft_list = get_aircraft_list(country['ch_name'], country_url_list)
             for aircraft in aircraft_list:
                 sql = 'insert into aircraft_info_global(iata, icao, ch_name, en_name, city_ch_name, city_en_name, country_ch_name, country_en_name, region, continent_ch_name, continent_en_name, details_url, update_time) ' \
                       'value("{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}")'.format(
@@ -112,12 +121,9 @@ def iter_to_list(iter):
     return temp_list
 
 
-def get_aircraft_list(country_ch_name, country_url):
+def get_aircraft_list(country_ch_name, country_url_list):
     aircraft_list = []
-    # 测试
-    # country_url = 'http://airport.anseo.cn/c-burundi'
-    next_url = country_url
-    while True:
+    for next_url in country_url_list:
         html = get_html(next_url)
         if html:
             soup = bs(html, 'html.parser')
@@ -137,31 +143,16 @@ def get_aircraft_list(country_ch_name, country_url):
                     aircraft_dict['iata'] = data_tds[2].a.string
                     aircraft_dict['icao'] = data_tds[3].a.string
                     aircraft_list.append(aircraft_dict)
-                pagination = data_div.find('div', class_='mod-footer clearfix').find('ul', class_='pagination pull-right')
-                if pagination:
-                    # soup.find里用正则只是匹配标签名
-                    # next_url_a = pagination.find(re.compile(r'<a href="(.*)">></a>'))
-                    # next_url_a = re.findall(re.compile(r'<a href="(.*)">></a>'), pagination, flags=0)
-                    next_url_a = pagination.find('a', text='>')
-                    if next_url_a:
-                        next_url = next_url_a['href']
-                    else:
-                        print("已完整获取[%s]的所有机场信息，机场[%d]个" % (country_ch_name, len(aircraft_list)))
-                        with open(log_path + '/' + info_log, 'a', encoding='utf-8') as info_file:
-                            print("已完整获取[%s]的所有机场信息，机场[%d]个" % (country_ch_name, len(aircraft_list)), file=info_file)
-                        break
-                else:
-                    print("页面[%s]加载不完整" % (next_url))
-                    with open(log_path + '/' + abnormal_log, 'a', encoding='utf-8') as abnormal_file:
-                        print("页面[%s]加载不完整" % (next_url), file=abnormal_file)
-                    break
             else:
                 print("页面[%s]不正常" % (next_url))
                 with open(log_path + '/' + abnormal_log, 'a', encoding='utf-8') as abnormal_file:
                     print("页面[%s]不正常" % (next_url), file=abnormal_file)
-                break
+                continue
         else:
-            break
+            continue
+    print("已完整获取[%s]的所有机场信息，机场[%d]个" % (country_ch_name, len(aircraft_list)))
+    with open(log_path + '/' + info_log, 'a', encoding='utf-8') as info_file:
+        print("已完整获取[%s]的所有机场信息，机场[%d]个" % (country_ch_name, len(aircraft_list)), file=info_file)
     return aircraft_list
 
 
